@@ -302,6 +302,89 @@ def analyze_batch_results(df, predictions, probabilities):
         'avg_probability': avg_probability
     }
 
+
+def compute_feature_importance(model, feature_names):
+    """Ambil feature importance (tree) atau koefisien (linear); kembalikan dalam urutan menurun."""
+    importances = None
+
+    if hasattr(model, "feature_importances_"):
+        importances = np.array(model.feature_importances_, dtype=float)
+    elif hasattr(model, "coef_"):
+        coefs = np.array(model.coef_, dtype=float)
+        if coefs.ndim > 1:
+            coefs = np.mean(np.abs(coefs), axis=0)
+        else:
+            coefs = np.abs(coefs)
+        importances = coefs
+
+    if importances is None or importances.size == 0:
+        return None
+
+    # Selaraskan panjang jika model mengembalikan lebih banyak/lebih sedikit
+    n = min(len(importances), len(feature_names))
+    paired = list(zip(feature_names[:n], importances[:n]))
+    paired.sort(key=lambda x: x[1], reverse=True)
+
+    total = sum(v for _, v in paired) or 1.0
+    data = [{
+        'Fitur': name,
+        'Importance': (value / total) * 100
+    } for name, value in paired]
+
+    return pd.DataFrame(data)
+
+
+def plot_feature_importance(importance_df):
+    fig = px.bar(
+        importance_df,
+        x='Importance',
+        y='Fitur',
+        orientation='h',
+        color='Importance',
+        color_continuous_scale='Blues',
+        text=importance_df['Importance'].map(lambda v: f"{v:.1f}%"),
+    )
+
+    fig.update_layout(
+        title=dict(
+            text="<b>Feature Importance Model</b>",
+            x=0.05,
+            xanchor="left",
+            font=dict(size=14, color='#212529')
+        ),
+        xaxis_title="Kontribusi (%)",
+        yaxis_title="",
+        height=420,
+        plot_bgcolor='#f8f9fa',
+        paper_bgcolor='white',
+        margin=dict(l=80, r=40, t=60, b=60),
+        font=dict(color='#212529', family='Segoe UI'),
+        coloraxis_showscale=False,
+        xaxis=dict(
+            showgrid=True, 
+            gridcolor='#e9ecef', 
+            showline=True, 
+            linecolor='#dee2e6', 
+            rangemode='tozero',
+            tickfont=dict(color='#212529')
+        ),
+        yaxis=dict(
+            showgrid=False, 
+            showline=True, 
+            linecolor='#dee2e6',
+            tickfont=dict(color='#212529')
+        )
+    )
+
+    fig.update_traces(
+        marker_line_color='#0b4870', 
+        marker_line_width=1, 
+        textposition='outside',
+        textfont=dict(color='#212529')
+    )
+
+    return fig
+
 def plot_probability_distribution(df_result):
     """Membuat histogram distribusi probabilitas"""
     fig = go.Figure()
@@ -406,7 +489,8 @@ def plot_feature_averages(df_result):
         y=[accepted[col] for col in group1],
         marker_color='#198754',
         text=[f"{accepted[col]:.1f}" for col in group1],
-        textposition='outside'
+        textposition='outside',
+        textfont=dict(color='#212529')
     ))
     fig1.add_trace(go.Bar(
         name='Ditolak',
@@ -414,7 +498,8 @@ def plot_feature_averages(df_result):
         y=[rejected[col] for col in group1],
         marker_color='#dc3545',
         text=[f"{rejected[col]:.1f}" for col in group1],
-        textposition='outside'
+        textposition='outside',
+        textfont=dict(color='#212529')
     ))
     fig1.update_layout(
         title=dict(
@@ -452,7 +537,8 @@ def plot_feature_averages(df_result):
         y=[accepted[col] for col in group2],
         marker_color='#198754',
         text=[f"{accepted[col]:.2f}" for col in group2],
-        textposition='outside'
+        textposition='outside',
+        textfont=dict(color='#212529')
     ))
     fig2.add_trace(go.Bar(
         name='Ditolak',
@@ -460,7 +546,8 @@ def plot_feature_averages(df_result):
         y=[rejected[col] for col in group2],
         marker_color='#dc3545',
         text=[f"{rejected[col]:.2f}" for col in group2],
-        textposition='outside'
+        textposition='outside',
+        textfont=dict(color='#212529')
     ))
     fig2.update_layout(
         title=dict(
@@ -498,7 +585,8 @@ def plot_feature_averages(df_result):
         y=[accepted[col] for col in group3],
         marker_color='#198754',
         text=[f"{accepted[col]:.2f}" for col in group3],
-        textposition='outside'
+        textposition='outside',
+        textfont=dict(color='#212529')
     ))
     fig3.add_trace(go.Bar(
         name='Ditolak',
@@ -506,7 +594,8 @@ def plot_feature_averages(df_result):
         y=[rejected[col] for col in group3],
         marker_color='#dc3545',
         text=[f"{rejected[col]:.2f}" for col in group3],
-        textposition='outside'
+        textposition='outside',
+        textfont=dict(color='#212529')
     ))
     fig3.update_layout(
         title=dict(
@@ -747,6 +836,37 @@ if uploaded_file is not None:
                     st.plotly_chart(fig2, use_container_width=True)
                 with col3:
                     st.plotly_chart(fig3, use_container_width=True)
+
+                # Feature importance
+                importance_feature_names = [
+                    'GRE Score',
+                    'TOEFL Score',
+                    'University Rating',
+                    'SOP',
+                    'LOR',
+                    'GPA',
+                    'Research'
+                ]
+
+                importance_df = compute_feature_importance(model, importance_feature_names)
+
+                st.markdown("<div class='section-header'><h3>Feature Importance Model</h3></div>", unsafe_allow_html=True)
+                st.markdown(
+                    "<p style='color: #6c757d; margin: 10px 0 20px 0; font-size: 0.95rem;'>Semakin tinggi nilai importance, semakin besar pengaruh fitur terhadap prediksi model. Gunakan daftar ini untuk memprioritaskan perbaikan data atau intervensi kandidat.</p>",
+                    unsafe_allow_html=True
+                )
+
+                if importance_df is not None:
+                    fig_imp = plot_feature_importance(importance_df)
+                    st.plotly_chart(fig_imp, use_container_width=True)
+
+                    top3 = importance_df.head(3)
+                    st.markdown("<p style='color: #495057; margin: 10px 0 5px 0; font-weight: 600;'>Tiga faktor teratas:</p>", unsafe_allow_html=True)
+                    for _, row in top3.iterrows():
+                        item = f"- {row['Fitur']}: kontribusi {row['Importance']:.1f}%"
+                        st.markdown(f"<p style='color: #495057; margin: 2px 0 2px 15px;'>{item}</p>", unsafe_allow_html=True)
+                else:
+                    st.info("Model tidak menyediakan feature importance/koefisien sehingga bagian ini tidak dapat ditampilkan.")
                 
                 # Kategori probabilitas
                 st.markdown("<div class='section-header'><h3>Distribusi Berdasarkan Kategori Probabilitas</h3></div>", unsafe_allow_html=True)
