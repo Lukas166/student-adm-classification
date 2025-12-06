@@ -4,6 +4,8 @@ import numpy as np
 import pickle
 import time
 import plotly.graph_objects as go
+import plotly.express as px
+from io import StringIO
 
 st.set_page_config(
     page_title="Sistem Prediksi Penerimaan Pascasarjana",
@@ -39,32 +41,12 @@ st.markdown("""
         font-size: 0.95rem;
     }
     
-    div[data-baseweb="input"] input {
-        background-color: #ffffff !important;
-        color: #000000 !important;
-        border: 1px solid #ced4da !important;
-    }
-    
-    div[data-baseweb="input"] {
-        background-color: #ffffff !important;
-    }
-    
-    input[type="text"], input[type="number"] {
-        background-color: #ffffff !important;
-        color: #000000 !important;
-        border: 1px solid #ced4da !important;
-    }
-    
-    div[data-baseweb="select"] > div {
-        background-color: #ffffff !important;
-        color: #000000 !important;
-    }
-    
     button[kind="primary"],
     button[kind="secondary"],
     .stButton > button,
-    div[data-testid="stButton"] > button {
-        background-color: #000000 !important;
+    div[data-testid="stButton"] > button,
+    .stDownloadButton > button {
+        background-color: #495057 !important;
         color: #ffffff !important;
         border: none !important;
         border-radius: 4px !important;
@@ -76,15 +58,17 @@ st.markdown("""
     button[kind="primary"]:hover,
     button[kind="secondary"]:hover,
     .stButton > button:hover,
-    div[data-testid="stButton"] > button:hover {
-        background-color: #212121 !important;
+    div[data-testid="stButton"] > button:hover,
+    .stDownloadButton > button:hover {
+        background-color: #343a40 !important;
         color: #ffffff !important;
     }
     
     button[kind="primary"] p,
     button[kind="secondary"] p,
     .stButton > button p,
-    div[data-testid="stButton"] > button p {
+    div[data-testid="stButton"] > button p,
+    .stDownloadButton > button p {
         color: #ffffff !important;
     }
     
@@ -93,39 +77,95 @@ st.markdown("""
         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     }
     
-    .streamlit-expanderHeader {
-        background-color: #f1f3f5 !important;
+    .stMarkdown p, .stMarkdown li, .stMarkdown span {
         color: #212529 !important;
-        font-weight: 600;
     }
     
-    .streamlit-expanderHeader:hover {
-        background-color: #e9ecef !important;
+    /* Fix untuk expander - pastikan teks tetap hitam */
+    details summary {
         color: #212529 !important;
     }
     
     details[open] summary {
         color: #212529 !important;
+        background-color: transparent !important;
     }
     
-    .stMarkdown p, .stMarkdown li, .stMarkdown span {
+    details summary:hover {
         color: #212529 !important;
     }
     
-    .element-container p {
+    details summary p,
+    details summary span,
+    details summary div {
         color: #212529 !important;
     }
     
-    div[data-testid="stExpander"] div[role="button"] p {
+    /* Fix untuk konten di dalam expander */
+    details[open] > div {
         color: #212529 !important;
     }
     
-    div[data-testid="stMarkdownContainer"] p {
+    details[open] p, details[open] span, details[open] li {
         color: #212529 !important;
     }
     
-    .stAlert p {
-        color: #000000 !important;
+    /* Fix untuk teks di dalam summary saat expander dibuka */
+    details[open] summary * {
+        color: #212529 !important;
+    }
+    
+    /* Fix untuk file uploader text */
+    div[data-testid="stFileUploader"] label,
+    div[data-testid="stFileUploader"] p,
+    div[data-testid="stFileUploader"] span,
+    div[data-testid="stFileUploader"] small,
+    div[data-testid="stFileUploadDropzone"] label,
+    div[data-testid="stFileUploadDropzone"] p,
+    div[data-testid="stFileUploadDropzone"] span,
+    div[data-testid="stFileUploadDropzone"] small {
+        color: #212529 !important;
+    }
+    
+    /* Pastikan dataframe dan tabel tetap readable */
+    .dataframe, .dataframe * {
+        color: #212529 !important;
+    }
+    
+    .metric-card {
+        background-color: #ffffff;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        text-align: center;
+        border: 1px solid #e9ecef;
+    }
+    
+    .metric-value {
+        font-size: 2.5rem;
+        font-weight: bold;
+        color: #495057;
+        margin: 10px 0;
+    }
+    
+    .metric-label {
+        font-size: 1rem;
+        color: #6c757d;
+        font-weight: 500;
+    }
+    
+    /* Section header styling */
+    .section-header {
+        background-color: #ffffff;
+        padding: 15px 20px;
+        border-radius: 6px;
+        margin: 20px 0 15px 0;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+    
+    .section-header h3 {
+        margin: 0 !important;
+        color: #212529 !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -142,340 +182,696 @@ def load_assets():
 
 model, scaler = load_assets()
 
-def get_prediction(input_data):
-    scaled_data = scaler.transform(input_data)
-    pred = model.predict(scaled_data)[0]
-    prob = model.predict_proba(scaled_data)[0]
-    return pred, prob
+def create_template_csv():
+    """Membuat template CSV untuk download"""
+    template_data = {
+        'Nama': ['Lukas Austin', 'Devin Suryadi', 'Orlando Bloem'],
+        'GRE_Score': [300, 310, 315],
+        'TOEFL_Score': [95, 105, 110],
+        'University_Rating': [2, 3, 4],
+        'SOP': [2, 3.5, 3.0],
+        'LOR': [4.0, 3.5, 2.5],
+        'GPA': [3.65, 3.40, 4],
+        'Research': [1, 1, 0]
+    }
+    return pd.DataFrame(template_data)
 
-def show_help_info(field_name):
-    help_info = {
-        "GRE Score": "Graduate Record Examination (260-340). Nilai kompetitif: 315+. Tes standar untuk masuk pascasarjana.",
-        "TOEFL Score": "Test of English as a Foreign Language (0-120). Nilai kompetitif: 100+. Mengukur kemampuan bahasa Inggris akademik.",
-        "University Rating": "Peringkat universitas S1 Anda. 1=Tidak Dikenal, 3=Rata-rata, 5=Top Tier. Rating tinggi dapat kompensasi GPA rendah.",
-        "SOP": "Statement of Purpose (1-5). Esai motivasi studi. 1=Sangat Buruk, 3=Cukup, 5=Outstanding. Harus spesifik dan jelas.",
-        "LOR": "Letter of Recommendation (1-5). Surat rekomendasi dari dosen/atasan. 1=Lemah, 3=Standar, 5=Sangat Kuat.",
-        "GPA": "Grade Point Average/IPK (0.00-4.00). Nilai kompetitif: 3.20+. Pastikan sudah dalam skala 4.0.",
-        "Research": "Pengalaman riset/publikasi jurnal. Faktor yang SANGAT berpengaruh dalam penerimaan pascasarjana."
+
+def style_table(df, zebra=True, hide_index=True, table_width="100%"):
+    """Apply consistent styling to dataframes rendered via Styler."""
+    table_styles = [
+        {'selector': 'table', 'props': 'border: 1px solid #dee2e6; border-collapse: collapse;'},
+        {'selector': 'th', 'props': 'background-color: #f1f3f5; color: #212529; border: 1px solid #dee2e6; font-weight: 600; text-align: left;'},
+        {'selector': 'td', 'props': 'border: 1px solid #dee2e6;'}
+    ]
+
+    base = (
+        df.style
+        .set_table_styles(table_styles)
+        .set_table_attributes(
+            f'style="border: 1px solid #dee2e6; border-collapse: collapse; width: {table_width};"'
+        )
+        .set_properties(**{
+            'background-color': '#ffffff',
+            'color': '#212529',
+            'border': '1px solid #dee2e6'
+        })
+    )
+
+    if hide_index:
+        base = base.hide(axis='index')
+
+    if zebra:
+        base = base.apply(
+            lambda row: [
+                'background-color: #f8f9fa;' if row.name % 2 else 'background-color: #ffffff;'
+                for _ in row
+            ],
+            axis=1
+        )
+
+    return base
+
+def validate_csv(df):
+    """Validasi format CSV yang diupload"""
+    required_columns = ['GRE_Score', 'TOEFL_Score', 'University_Rating', 'SOP', 'LOR', 'GPA', 'Research']
+    
+    missing_cols = [col for col in required_columns if col not in df.columns]
+    if missing_cols:
+        return False, f"Kolom berikut tidak ditemukan: {', '.join(missing_cols)}"
+    
+    # Validasi range nilai
+    validations = {
+        'GRE_Score': (260, 340),
+        'TOEFL_Score': (0, 120),
+        'University_Rating': (1, 5),
+        'SOP': (1, 5),
+        'LOR': (1, 5),
+        'GPA': (0, 4),
+        'Research': (0, 1)
     }
     
-    info = help_info.get(field_name, "")
-    if info:
-        st.caption(info)
+    for col, (min_val, max_val) in validations.items():
+        if df[col].min() < min_val or df[col].max() > max_val:
+            return False, f"Nilai {col} harus berada di antara {min_val} dan {max_val}"
+    
+    return True, "Valid"
 
-def generate_recommendations(input_data, prediction, prob):
-    recs = []
-    prob_percent = prob[1] * 100
+def batch_predict(df):
+    """Melakukan prediksi batch untuk semua kandidat"""
+    feature_cols = ['GRE_Score', 'TOEFL_Score', 'University_Rating', 'SOP', 'LOR', 'GPA', 'Research']
+    X = df[feature_cols]
     
-    scaled_vals = scaler.transform(input_data)[0]
-    coefs = model.coef_[0]
-    contributions = scaled_vals * coefs
+    # Rename kolom untuk sesuai dengan model
+    X_renamed = X.rename(columns={
+        'GRE_Score': 'GRE Score',
+        'TOEFL_Score': 'TOEFL Score',
+        'University_Rating': 'University Rating'
+    })
     
-    df_contrib = pd.DataFrame({
-        'Faktor': input_data.columns,
-        'Kontribusi': contributions,
-        'Nilai_Asli': input_data.values[0],
-        'Koefisien': coefs
-    }).sort_values('Kontribusi', ascending=True)
+    scaled_data = scaler.transform(X_renamed)
+    predictions = model.predict(scaled_data)
+    probabilities = model.predict_proba(scaled_data)[:, 1]
     
-    negative_factors = df_contrib[df_contrib['Kontribusi'] < 0].nsmallest(3, 'Kontribusi')
-    
-    for _, row in negative_factors.iterrows():
-        faktor = row['Faktor']
-        nilai_asli = row['Nilai_Asli']
-        kontribusi = row['Kontribusi']
-        koef = row['Koefisien']
-        
-        if koef != 0:
-            nilai_scaled_sekarang = scaled_vals[list(input_data.columns).index(faktor)]
-            target_scaled = -kontribusi / koef + nilai_scaled_sekarang
-            
-            mean_val = scaler.mean_[list(input_data.columns).index(faktor)]
-            std_val = scaler.scale_[list(input_data.columns).index(faktor)]
-            target_nilai_asli = target_scaled * std_val + mean_val
-            
-            peningkatan = target_nilai_asli - nilai_asli
-            
-            if faktor == 'GRE Score':
-                recs.append(f"GRE Score saat ini {int(nilai_asli)} memberikan kontribusi negatif sebesar {kontribusi:.4f}. Tingkatkan minimal {int(abs(peningkatan))} poin menjadi sekitar {int(target_nilai_asli)} untuk meningkatkan peluang.")
-            elif faktor == 'TOEFL Score':
-                recs.append(f"TOEFL Score {int(nilai_asli)} di bawah ekspektasi model. Tingkatkan minimal {int(abs(peningkatan))} poin menjadi sekitar {int(target_nilai_asli)} untuk meningkatkan peluang penerimaan.")
-            elif faktor == 'GPA':
-                recs.append(f"IPK {nilai_asli:.2f} memberikan kontribusi negatif. Target minimal {target_nilai_asli:.2f}. Jika tidak memungkinkan, kompensasi dengan memperkuat faktor lain yang memiliki koefisien tinggi.")
-            elif faktor == 'SOP':
-                recs.append(f"Kualitas SOP ({nilai_asli:.1f}/5.0) perlu ditingkatkan menjadi minimal {target_nilai_asli:.1f}. Minta review dari mentor atau konsultan pendidikan untuk meningkatkan kejelasan tujuan dan kecocokan program.")
-            elif faktor == 'LOR':
-                recs.append(f"Kualitas LOR ({nilai_asli:.1f}/5.0) perlu ditingkatkan menjadi minimal {target_nilai_asli:.1f}. Pilih pemberi rekomendasi dengan kredibilitas lebih tinggi yang benar-benar mengenal kualitas akademik Anda.")
-            elif faktor == 'University Rating':
-                recs.append(f"Rating universitas asal ({int(nilai_asli)}/5) relatif rendah memberikan kontribusi negatif. Kompensasi dengan prestasi akademik yang sangat kuat (publikasi, GPA tinggi, penghargaan).")
-            elif faktor == 'Research':
-                if nilai_asli == 0:
-                    recs.append("Pengalaman riset memberikan kontribusi negatif signifikan karena belum ada. Sangat disarankan untuk: (1) Bergabung dengan proyek penelitian dosen, (2) Publikasi di jurnal/konferensi, atau (3) Magang riset di lab/industri.")
-    
-    positive_factors = df_contrib[df_contrib['Kontribusi'] > 0].nlargest(2, 'Kontribusi')
-    
-    if not positive_factors.empty:
-        for _, row in positive_factors.iterrows():
-            recs.append(f"Kekuatan utama: {row['Faktor']} (nilai: {row['Nilai_Asli']}) memberikan kontribusi positif sebesar {row['Kontribusi']:.4f}. Pertahankan dan tonjolkan ini dalam aplikasi Anda.")
-    
-    if prob_percent > 80:
-        recs.append("Probabilitas penerimaan sangat tinggi (>80%). Fokus pada konsistensi dokumen dan persiapan interview.")
-    elif prob_percent > 60:
-        recs.append("Probabilitas penerimaan cukup baik (60-80%). Perbaiki faktor-faktor negatif di atas untuk meningkatkan peluang.")
-    elif prob_percent > 40:
-        recs.append("Probabilitas penerimaan menengah (40-60%). Sangat disarankan memperbaiki minimal 2 faktor dengan kontribusi negatif terbesar.")
-    else:
-        recs.append("Probabilitas penerimaan rendah (<40%). Pertimbangkan menunda aplikasi dan fokus pada peningkatan kualifikasi secara menyeluruh.")
-    
-    if len(negative_factors) > 0 and prob_percent < 60:
-        faktor_terkuat = df_contrib.nlargest(1, 'Koefisien')['Faktor'].values[0]
-        koef_terkuat = df_contrib.nlargest(1, 'Koefisien')['Koefisien'].values[0]
-        recs.append(f"Strategi kompensasi: Fokus memaksimalkan {faktor_terkuat} karena memiliki pengaruh terbesar menurut model (koefisien: {koef_terkuat:.4f}).")
-    
-    return recs
+    return predictions, probabilities
 
-def plot_feature_importance(input_data):
-    scaled_vals = scaler.transform(input_data)[0]
-    coefs = model.coef_[0]
+def analyze_batch_results(df, predictions, probabilities):
+    """Menganalisis hasil prediksi batch"""
+    df_result = df.copy()
+    df_result['Prediksi'] = ['Diterima' if p == 1 else 'Ditolak' for p in predictions]
+    df_result['Probabilitas_Penerimaan'] = probabilities * 100
     
-    contributions = scaled_vals * coefs
-    df_imp = pd.DataFrame({
-        'Faktor': input_data.columns,
-        'Kontribusi': contributions,
-        'Nilai_Asli': input_data.values[0]
-    }).sort_values('Kontribusi', ascending=True)
+    # Statistik agregat
+    total_candidates = len(df_result)
+    accepted = sum(predictions)
+    rejected = total_candidates - accepted
+    avg_probability = probabilities.mean() * 100
     
-    colors = ['#dc3545' if x < 0 else '#198754' for x in df_imp['Kontribusi']]
+    # Kategori probabilitas
+    df_result['Kategori'] = pd.cut(
+        df_result['Probabilitas_Penerimaan'],
+        bins=[0, 40, 60, 80, 100],
+        labels=['Rendah (<40%)', 'Menengah (40-60%)', 'Baik (60-80%)', 'Sangat Baik (>80%)']
+    )
     
-    fig = go.Figure(go.Bar(
-        x=df_imp['Kontribusi'],
-        y=df_imp['Faktor'],
-        orientation='h',
-        marker=dict(color=colors),
-        text=df_imp['Kontribusi'].round(3),
-        textposition='outside',
-        hovertemplate='<b>%{y}</b><br>Kontribusi: %{x:.4f}<br>Nilai: %{customdata}<extra></extra>',
-        customdata=df_imp['Nilai_Asli']
+    return df_result, {
+        'total': total_candidates,
+        'accepted': accepted,
+        'rejected': rejected,
+        'acceptance_rate': (accepted/total_candidates)*100,
+        'avg_probability': avg_probability
+    }
+
+def plot_probability_distribution(df_result):
+    """Membuat histogram distribusi probabilitas"""
+    fig = go.Figure()
+    
+    fig.add_trace(go.Histogram(
+        x=df_result['Probabilitas_Penerimaan'],
+        nbinsx=20,
+        name='Distribusi Probabilitas',
+        marker_color='#495057',
+        opacity=0.8
     ))
     
     fig.update_layout(
-        title="Analisis Kontribusi Faktor terhadap Keputusan Prediksi",
-        xaxis_title="Besaran Pengaruh (Positif = Mendukung, Negatif = Menghambat)",
-        yaxis_title="Faktor Akademik",
+        title=dict(
+            text="<b>Distribusi Probabilitas Penerimaan</b>",
+            x=0.05,
+            xanchor="left",
+            font=dict(size=14, color='#212529')
+        ),
+        xaxis_title="Probabilitas Penerimaan (%)",
+        yaxis_title="Jumlah Kandidat",
         height=400,
-        margin=dict(l=20, r=20, t=60, b=40),
-        plot_bgcolor='white',
-        font=dict(color='black', size=12)
+        plot_bgcolor='#f8f9fa',
+        paper_bgcolor='white',
+        font=dict(color='#212529', family='Segoe UI'),
+        margin=dict(l=80, r=80, t=60, b=60),
+        xaxis=dict(
+            showgrid=True,
+            gridcolor='#e9ecef',
+            showline=True,
+            linecolor='#dee2e6',
+            tickfont=dict(color='#212529')
+        ),
+        yaxis=dict(
+            showgrid=True,
+            gridcolor='#e9ecef',
+            showline=True,
+            linecolor='#dee2e6',
+            tickfont=dict(color='#212529')
+        )
     )
     
-    fig.add_vline(x=0, line_width=2, line_dash="dash", line_color="gray")
-    
-    return fig, df_imp
+    return fig
 
-def get_feature_explanation(df_imp):
-    explanations = []
+def plot_acceptance_by_category(df_result):
+    """Membuat pie chart acceptance rate"""
+    category_counts = df_result['Prediksi'].value_counts()
     
-    top_positive = df_imp[df_imp['Kontribusi'] > 0].nlargest(2, 'Kontribusi')
-    top_negative = df_imp[df_imp['Kontribusi'] < 0].nsmallest(2, 'Kontribusi')
-    
-    if not top_positive.empty:
-        for _, row in top_positive.iterrows():
-            explanations.append(f"**{row['Faktor']}** (Nilai: {row['Nilai_Asli']}) memberikan kontribusi POSITIF sebesar {row['Kontribusi']:.4f} - ini adalah kekuatan utama profil Anda.")
-    
-    if not top_negative.empty:
-        for _, row in top_negative.iterrows():
-            explanations.append(f"**{row['Faktor']}** (Nilai: {row['Nilai_Asli']}) memberikan kontribusi NEGATIF sebesar {row['Kontribusi']:.4f} - ini adalah area yang perlu diperbaiki.")
-    
-    return explanations
+    colors = ['#198754' if lbl == 'Diterima' else '#dc3545' for lbl in category_counts.index]
 
-st.markdown("<h1>Sistem Pendukung Keputusan untuk Seleksi Pascasarjana</h1>", unsafe_allow_html=True)
-st.markdown("<p>Dashboard untuk analisis probabilitas penerimaan mahasiswa berdasarkan data historis dan machine learning.</p>", unsafe_allow_html=True)
+    fig = go.Figure(data=[go.Pie(
+        labels=category_counts.index,
+        values=category_counts.values,
+        marker=dict(colors=colors),
+        hole=0.4,
+        textinfo='label+percent',
+        textfont=dict(size=12, color='#212529'),
+        hovertemplate='<b>%{label}</b><br>Jumlah: %{value}<br>Persentase: %{percent}<extra></extra>'
+    )])
+    
+    fig.update_layout(
+        title=dict(
+            text="<b>Proporsi Prediksi Penerimaan</b>",
+            x=0.05,
+            xanchor="left",
+            font=dict(size=14, color='#212529')
+        ),
+        height=400,
+        paper_bgcolor='white',
+        font=dict(color='#212529', family='Segoe UI'),
+        margin=dict(l=80, r=80, t=60, b=60),
+        showlegend=True,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=-0.15,
+            xanchor="center",
+            x=0.5,
+            font=dict(color='#212529')
+        )
+    )
+    
+    return fig
+
+def plot_feature_averages(df_result):
+    """Membuat bar chart rata-rata fitur berdasarkan prediksi - dipisah per kategori skala"""
+    feature_cols = ['GRE_Score', 'TOEFL_Score', 'University_Rating', 'SOP', 'LOR', 'GPA', 'Research']
+    
+    accepted = df_result[df_result['Prediksi'] == 'Diterima'][feature_cols].mean()
+    rejected = df_result[df_result['Prediksi'] == 'Ditolak'][feature_cols].mean()
+    
+    # Kelompokkan fitur berdasarkan skala
+    group1 = ['GRE_Score', 'TOEFL_Score']  # Skala besar
+    group2 = ['University_Rating', 'SOP', 'LOR']  # Skala 1-5
+    group3 = ['GPA', 'Research']  # Skala kecil
+    
+    # Chart 1: GRE & TOEFL Score
+    fig1 = go.Figure()
+    fig1.add_trace(go.Bar(
+        name='Diterima',
+        x=group1,
+        y=[accepted[col] for col in group1],
+        marker_color='#198754',
+        text=[f"{accepted[col]:.1f}" for col in group1],
+        textposition='outside'
+    ))
+    fig1.add_trace(go.Bar(
+        name='Ditolak',
+        x=group1,
+        y=[rejected[col] for col in group1],
+        marker_color='#dc3545',
+        text=[f"{rejected[col]:.1f}" for col in group1],
+        textposition='outside'
+    ))
+    fig1.update_layout(
+        title=dict(
+            text="<b>Skor Tes Standar</b>",
+            x=0.05,
+            xanchor="left",
+            font=dict(size=13, color='#212529')
+        ),
+        xaxis_title="",
+        yaxis_title="Rata-rata Nilai",
+        barmode='group',
+        height=350,
+        plot_bgcolor='#f8f9fa',
+        paper_bgcolor='white',
+        margin=dict(l=50, r=50, t=60, b=50),
+        font=dict(color='#212529', family='Segoe UI'),
+        showlegend=True,
+        legend=dict(
+            orientation="h",
+            yanchor="top",
+            y=-0.15,
+            xanchor="center",
+            x=0.5,
+            font=dict(color='#212529')
+        ),
+        xaxis=dict(showgrid=False, showline=True, linecolor='#dee2e6', tickfont=dict(color='#212529')),
+        yaxis=dict(showgrid=True, gridcolor='#e9ecef', showline=True, linecolor='#dee2e6', tickfont=dict(color='#212529'))
+    )
+    
+    # Chart 2: Rating & Evaluasi (1-5)
+    fig2 = go.Figure()
+    fig2.add_trace(go.Bar(
+        name='Diterima',
+        x=group2,
+        y=[accepted[col] for col in group2],
+        marker_color='#198754',
+        text=[f"{accepted[col]:.2f}" for col in group2],
+        textposition='outside'
+    ))
+    fig2.add_trace(go.Bar(
+        name='Ditolak',
+        x=group2,
+        y=[rejected[col] for col in group2],
+        marker_color='#dc3545',
+        text=[f"{rejected[col]:.2f}" for col in group2],
+        textposition='outside'
+    ))
+    fig2.update_layout(
+        title=dict(
+            text="<b>Rating & Evaluasi Dokumen</b>",
+            x=0.05,
+            xanchor="left",
+            font=dict(size=13, color='#212529')
+        ),
+        xaxis_title="",
+        yaxis_title="Rata-rata Nilai",
+        barmode='group',
+        height=350,
+        plot_bgcolor='#f8f9fa',
+        paper_bgcolor='white',
+        margin=dict(l=50, r=50, t=60, b=50),
+        font=dict(color='#212529', family='Segoe UI'),
+        yaxis=dict(range=[0, 5.5], showgrid=True, gridcolor='#e9ecef', showline=True, linecolor='#dee2e6', tickfont=dict(color='#212529')),
+        showlegend=True,
+        legend=dict(
+            orientation="h",
+            yanchor="top",
+            y=-0.15,
+            xanchor="center",
+            x=0.5,
+            font=dict(color='#212529')
+        ),
+        xaxis=dict(showgrid=False, showline=True, linecolor='#dee2e6', tickfont=dict(color='#212529'))
+    )
+    
+    # Chart 3: GPA & Research
+    fig3 = go.Figure()
+    fig3.add_trace(go.Bar(
+        name='Diterima',
+        x=group3,
+        y=[accepted[col] for col in group3],
+        marker_color='#198754',
+        text=[f"{accepted[col]:.2f}" for col in group3],
+        textposition='outside'
+    ))
+    fig3.add_trace(go.Bar(
+        name='Ditolak',
+        x=group3,
+        y=[rejected[col] for col in group3],
+        marker_color='#dc3545',
+        text=[f"{rejected[col]:.2f}" for col in group3],
+        textposition='outside'
+    ))
+    fig3.update_layout(
+        title=dict(
+            text="<b>GPA & Pengalaman Riset</b>",
+            x=0.05,
+            xanchor="left",
+            font=dict(size=13, color='#212529')
+        ),
+        xaxis_title="",
+        yaxis_title="Rata-rata Nilai",
+        barmode='group',
+        height=350,
+        plot_bgcolor='#f8f9fa',
+        paper_bgcolor='white',
+        margin=dict(l=50, r=50, t=60, b=50),
+        font=dict(color='#212529', family='Segoe UI'),
+        yaxis=dict(range=[0, 4.5], showgrid=True, gridcolor='#e9ecef', showline=True, linecolor='#dee2e6', tickfont=dict(color='#212529')),
+        showlegend=True,
+        legend=dict(
+            orientation="h",
+            yanchor="top",
+            y=-0.15,
+            xanchor="center",
+            x=0.5,
+            font=dict(color='#212529')
+        ),
+        xaxis=dict(showgrid=False, showline=True, linecolor='#dee2e6', tickfont=dict(color='#212529'))
+    )
+    
+    return fig1, fig2, fig3
+
+# Header
+st.markdown("<h1>Sistem Prediksi Penerimaan Pascasarjana</h1>", unsafe_allow_html=True)
+st.markdown("<p style='color: #6c757d; font-size: 1.05rem; margin-top: -10px;'>Dashboard Analisis Admisi untuk Administrator Institusi Pendidikan</p>", unsafe_allow_html=True)
 st.divider()
 
-st.markdown("### Data Akademik Kandidat")
+# Download template
+st.markdown("<div class='section-header'><h3>Download Template CSV</h3></div>", unsafe_allow_html=True)
 
-candidate_name = st.text_input(
-    "Nama Kandidat (Opsional)", 
-    value="",
-    placeholder="Masukkan nama lengkap kandidat...",
-    key="name_input"
-)
+template_df = create_template_csv()
+csv_template = template_df.to_csv(index=False)
 
-if candidate_name:
-    st.success(f"Analisis untuk: {candidate_name}")
+col1, col2 = st.columns([1, 3])
+with col1:
+    st.download_button(
+        label="Download Template",
+        data=csv_template,
+        file_name="template_kandidat.csv",
+        mime="text/csv"
+    )
+
+with col2:
+    with st.expander("Lihat Format Template & Panduan Pengisian"):
+        styled_template = style_table(template_df, zebra=False)
+        st.markdown(styled_template.to_html(), unsafe_allow_html=True)
+        st.markdown("""
+        **Keterangan Kolom:**
+        - **Nama**: Nama kandidat (opsional untuk identifikasi)
+        - **GRE_Score**: Skor GRE (260-340)
+        - **TOEFL_Score**: Skor TOEFL (0-120)
+        - **University_Rating**: Rating universitas asal (1-5)
+        - **SOP**: Rating Statement of Purpose (1.0-5.0)
+        - **LOR**: Rating Letter of Recommendation (1.0-5.0)
+        - **GPA**: IPK (0.00-4.00)
+        - **Research**: Pengalaman riset (0 = Tidak, 1 = Ya)
+        """)
 
 st.markdown("---")
 
-c1, c2 = st.columns(2)
-with c1:
-    st.markdown("**GRE Score**")
-    show_help_info("GRE Score")
-    gre = st.number_input(
-        "Masukkan nilai GRE", 
-        min_value=260, max_value=340, value=310,
-        label_visibility="collapsed",
-        key="gre_input"
-    )
-    
-    st.markdown("**Rating Universitas Asal**")
-    show_help_info("University Rating")
-    rating = st.selectbox(
-        "Pilih rating universitas", 
-        options=[1, 2, 3, 4, 5],
-        index=2,
-        format_func=lambda x: f"{x} - {'Tidak Dikenal' if x==1 else 'Rendah' if x==2 else 'Rata-rata' if x==3 else 'Baik' if x==4 else 'Top Tier'}",
-        label_visibility="collapsed",
-        key="rating_input"
-    )
-    
-    st.markdown("**Kualitas SOP (Statement of Purpose)**")
-    show_help_info("SOP")
-    sop = st.slider(
-        "Skala 1-5", 
-        1.0, 5.0, 3.0, 0.5,
-        format="%0.1f",
-        label_visibility="collapsed",
-        key="sop_input"
-    )
-    
-with c2:
-    st.markdown("**TOEFL Score**")
-    show_help_info("TOEFL Score")
-    toefl = st.number_input(
-        "Masukkan nilai TOEFL", 
-        min_value=0, max_value=120, value=100,
-        label_visibility="collapsed",
-        key="toefl_input"
-    )
-    
-    st.markdown("**IPK / CGPA (Skala 4.0)**")
-    show_help_info("GPA")
-    gpa = st.number_input(
-        "Masukkan IPK", 
-        min_value=0.0, max_value=4.0, value=3.20, step=0.01,
-        format="%.2f",
-        label_visibility="collapsed",
-        key="gpa_input"
-    )
-    
-    st.markdown("**Kualitas LOR (Letter of Recommendation)**")
-    show_help_info("LOR")
-    lor = st.slider(
-        "Skala 1-5", 
-        1.0, 5.0, 3.0, 0.5,
-        format="%0.1f",
-        label_visibility="collapsed",
-        key="lor_input"
-    )
+# Upload file
+st.markdown("<div class='section-header'><h3>Upload File CSV</h3></div>", unsafe_allow_html=True)
 
-st.markdown("---")
-st.markdown("**Pengalaman Riset**")
-show_help_info("Research")
-research_opt = st.radio(
-    "Status pengalaman riset", 
-    options=["Tidak Ada", "Ada"],
-    horizontal=True,
-    label_visibility="collapsed",
-    key="research_input"
+# Styling upload box: dropzone gelap dengan teks putih, daftar file tetap teks gelap
+st.markdown(
+    """
+    <style>
+    /* Daftar file terunggah (tetap gelap di teks, latar default putih) */
+    div[data-testid="stFileUploaderFileName"] { color: #212529 !important; }
+    div[data-testid="stFileUploaderFileSize"] { color: #6c757d !important; }
+    </style>
+    """,
+    unsafe_allow_html=True,
 )
-research = 1 if research_opt == "Ada" else 0
 
-predict_btn = st.button("Analisis Probabilitas Penerimaan", use_container_width=True)
+uploaded_file = st.file_uploader(
+    "Pilih file CSV dengan data kandidat",
+    type=['csv'],
+    help="File CSV harus mengikuti format template yang disediakan"
+)
 
-input_df = pd.DataFrame({
-    'GRE Score': [gre], 'TOEFL Score': [toefl], 'University Rating': [rating],
-    'SOP': [sop], 'LOR': [lor], 'GPA': [gpa], 'Research': [research]
-})
+if uploaded_file is not None:
+    try:
+        # Baca CSV
+        df_candidates = pd.read_csv(uploaded_file)
+        
+        st.markdown(
+            f"""
+            <div style="
+                background-color: #d1e7dd;
+                padding: 15px 20px;
+                border-radius: 6px;
+                color: #0f5132;
+                font-weight: 600;
+                margin: 15px 0;
+            ">
+                File berhasil diupload: <strong>{uploaded_file.name}</strong>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 
-if predict_btn:
-    with st.spinner("Sedang memproses data dan melakukan prediksi..."):
-        time.sleep(0.5)
-        pred, prob = get_prediction(input_df)
-        prob_percent = prob[1] * 100
+        st.markdown(f"**Jumlah kandidat:** {len(df_candidates)}")
         
-        st.markdown("---")
-        st.markdown("### Hasil Analisis Prediksi")
+        # Validasi
+        is_valid, message = validate_csv(df_candidates)
         
-        if candidate_name:
-            st.markdown(f"<h4>Kandidat: {candidate_name}</h4>", unsafe_allow_html=True)
-        
-        bg_color = "#d1e7dd" if pred == 1 else "#f8d7da"
-        text_color = "#0f5132" if pred == 1 else "#842029"
-        status_text = "DIREKOMENDASIKAN DITERIMA" if pred == 1 else "TIDAK DIREKOMENDASIKAN"
-        
-        st.markdown(f"""
-        <div style="background-color: {bg_color}; color: {text_color}; padding: 15px; border-radius: 5px; text-align: center; margin-bottom: 20px; border: 1px solid {text_color};">
-            <h2 style="margin:0; color: {text_color} !important;">{status_text}</h2>
-            <p style="margin:0; font-weight:bold; color: {text_color};">Probabilitas Penerimaan: {prob_percent:.2f}%</p>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        col_gauge, col_summary = st.columns([1, 1])
-        
-        with col_gauge:
-            fig_gauge = go.Figure(go.Indicator(
-                mode = "gauge+number",
-                value = prob_percent,
-                domain = {'x': [0, 1], 'y': [0, 1]},
-                title = {'text': "Confidence Score", 'font': {'color': "black", 'size': 16}},
-                number = {'suffix': "%", 'font': {'size': 40, 'color': 'black'}},
-                gauge = {
-                    'axis': {'range': [0, 100], 'tickwidth': 1, 'tickcolor': "black"},
-                    'bar': {'color': "#0d6efd"},
-                    'bgcolor': "white",
-                    'borderwidth': 2,
-                    'bordercolor': "gray",
-                    'steps': [
-                        {'range': [0, 40], 'color': "#ffebee"},
-                        {'range': [40, 60], 'color': "#fff9c4"},
-                        {'range': [60, 80], 'color': "#e1f5fe"},
-                        {'range': [80, 100], 'color': "#e8f5e9"}],
-                    'threshold': {
-                        'line': {'color': "red", 'width': 4},
-                        'thickness': 0.75,
-                        'value': 70}
-                }
-            ))
-            fig_gauge.update_layout(
-                height=250,
-                margin=dict(l=20,r=20,t=40,b=20),
-                paper_bgcolor='rgba(0,0,0,0)',
-                font={'color': "black"}
+        if not is_valid:
+            st.markdown(
+                f"""
+                <div style="
+                    background-color: #f8d7da;
+                    padding: 15px 20px;
+                    border-radius: 6px;
+                    color: #842029;
+                    font-weight: 600;
+                    margin: 15px 0;
+                ">
+                    Format CSV tidak valid: {message}
+                </div>
+                """,
+                unsafe_allow_html=True
             )
-            st.plotly_chart(fig_gauge, use_container_width=True)
+            st.stop()
         
-        with col_summary:
-            st.markdown("**Ringkasan Data Input:**")
-            summary_data = {
-                "Kriteria": ["GRE", "TOEFL", "Univ. Rating", "SOP", "LOR", "GPA", "Riset"],
-                "Nilai": [gre, toefl, rating, sop, lor, f"{gpa:.2f}", "Ada" if research==1 else "Tidak"]
-            }
-            st.dataframe(pd.DataFrame(summary_data), hide_index=True, use_container_width=True)
+        # Tampilkan preview data
+        with st.expander("Preview Data Kandidat"):
+            preview_html = style_table(df_candidates).to_html()
+            st.markdown(
+                f"<div style='max-height: 420px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 4px; padding: 4px;'>{preview_html}</div>",
+                unsafe_allow_html=True
+            )
         
-        st.markdown("---")
-        st.markdown("<h4>Rekomendasi</h4>", unsafe_allow_html=True)
-        recs = generate_recommendations(input_df, pred, prob)
-        
-        for i, rec in enumerate(recs, 1):
-            st.markdown(f"**{i}.** {rec}")
-        
-        st.markdown("---")
-        st.markdown("<h4>Analisis Feature Importance</h4>", unsafe_allow_html=True)
-        st.markdown("<p>Grafik ini menunjukkan bagaimana setiap faktor berkontribusi terhadap hasil prediksi:</p>", unsafe_allow_html=True)
-        
-        fig_imp, df_imp = plot_feature_importance(input_df)
-        st.plotly_chart(fig_imp, use_container_width=True)
-        
-        with st.expander("Penjelasan Detail Kontribusi Faktor"):
-            explanations = get_feature_explanation(df_imp)
-            for exp in explanations:
-                st.markdown(exp)
-            
-            st.markdown("---")
-            st.markdown("**Interpretasi:**")
-            st.markdown("- **Nilai Positif (Hijau)**: Faktor ini meningkatkan peluang penerimaan")
-            st.markdown("- **Nilai Negatif (Merah)**: Faktor ini menurunkan peluang penerimaan")
-            st.markdown("- **Besaran Nilai**: Semakin besar angkanya (positif/negatif), semakin kuat pengaruhnya")
+        # Tombol analisis
+        if st.button("Mulai Analisis Prediksi", use_container_width=True):
+            with st.spinner("Sedang memproses prediksi untuk semua kandidat..."):
+                time.sleep(1)
+                
+                # Prediksi batch
+                predictions, probabilities = batch_predict(df_candidates)
+                df_result, stats = analyze_batch_results(df_candidates, predictions, probabilities)
+                
+                st.markdown("---")
+                st.markdown("<div class='section-header'><h2 style='margin: 0 !important;'>Hasil Analisis</h2></div>", unsafe_allow_html=True)
+                
+                # Metric cards
+                col1, col2, col3, col4 = st.columns(4)
+                
+                with col1:
+                    st.markdown(f"""
+                    <div class="metric-card">
+                        <div class="metric-label">Total Kandidat</div>
+                        <div class="metric-value">{stats['total']}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                with col2:
+                    st.markdown(f"""
+                    <div class="metric-card">
+                        <div class="metric-label">Direkomendasikan Diterima</div>
+                        <div class="metric-value" style="color: #198754;">{stats['accepted']}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                with col3:
+                    st.markdown(f"""
+                    <div class="metric-card">
+                        <div class="metric-label">Tidak Direkomendasikan</div>
+                        <div class="metric-value" style="color: #dc3545;">{stats['rejected']}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                with col4:
+                    st.markdown(f"""
+                    <div class="metric-card">
+                        <div class="metric-label">Acceptance Rate</div>
+                        <div class="metric-value" style="color: #495057;">{stats['acceptance_rate']:.1f}%</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                st.markdown("<br>", unsafe_allow_html=True)
+                
+                # Grafik analisis
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.markdown("<h4 style='color: #495057; margin-bottom: 10px;'>Distribusi Probabilitas Penerimaan</h4>", unsafe_allow_html=True)
+                    fig_dist = plot_probability_distribution(df_result)
+                    st.plotly_chart(fig_dist, use_container_width=True)
+                    st.markdown("""
+                    <div style="background-color: #f8f9fa; padding: 12px; border-radius: 4px; margin-top: -10px;">
+                        <p style="color: #6c757d; margin: 0; font-size: 0.88rem; line-height: 1.5;">
+                            Grafik ini menunjukkan sebaran tingkat kemungkinan diterima dari seluruh kandidat. 
+                            Peak (puncak) yang tinggi menunjukkan banyak kandidat dengan probabilitas serupa. 
+                            Semakin ke kanan (mendekati 100%), semakin tinggi peluang penerimaan.
+                        </p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                with col2:
+                    st.markdown("<h4 style='color: #495057; margin-bottom: 10px;'>Proporsi Prediksi Penerimaan</h4>", unsafe_allow_html=True)
+                    fig_pie = plot_acceptance_by_category(df_result)
+                    st.plotly_chart(fig_pie, use_container_width=True)
+                    st.markdown("""
+                    <div style="background-color: #f8f9fa; padding: 12px; border-radius: 4px; margin-top: -10px;">
+                        <p style="color: #6c757d; margin: 0; font-size: 0.88rem; line-height: 1.5;">
+                            Grafik menampilkan perbandingan visual antara kandidat yang direkomendasikan untuk diterima (hijau) 
+                            dan yang tidak direkomendasikan (merah). Persentase menunjukkan proporsi dari total kandidat.
+                        </p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                # Feature comparison
+                st.markdown("<div class='section-header'><h3>Perbandingan Fitur: Kandidat Diterima vs Ditolak</h3></div>", unsafe_allow_html=True)
+                
+                st.markdown("""
+                <p style="color: #6c757d; margin: 10px 0 20px 0; font-size: 0.95rem; line-height: 1.6;">
+                    Grafik berikut membandingkan rata-rata nilai dari berbagai parameter antara kandidat yang diterima (hijau) 
+                    dan ditolak (merah). Perbedaan yang signifikan menunjukkan faktor-faktor yang paling berpengaruh terhadap keputusan penerimaan.
+                </p>
+                """, unsafe_allow_html=True)
+                
+                fig1, fig2, fig3 = plot_feature_averages(df_result)
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.plotly_chart(fig1, use_container_width=True)
+                with col2:
+                    st.plotly_chart(fig2, use_container_width=True)
+                with col3:
+                    st.plotly_chart(fig3, use_container_width=True)
+                
+                # Kategori probabilitas
+                st.markdown("<div class='section-header'><h3>Distribusi Berdasarkan Kategori Probabilitas</h3></div>", unsafe_allow_html=True)
+                category_summary = df_result['Kategori'].value_counts().reset_index()
+                category_summary.columns = ['Kategori', 'Jumlah Kandidat']
+                
+                col1, col2 = st.columns([1, 2])
+                with col1:
+                    st.markdown(style_table(category_summary).to_html(), unsafe_allow_html=True)
+                with col2:
+                    st.markdown("""
+                    **Interpretasi:**
+                    - **Rendah (<40%)**: Perlu perbaikan signifikan
+                    - **Menengah (40-60%)**: Kompetitif, perlu peningkatan
+                    - **Baik (60-80%)**: Kandidat kuat
+                    - **Sangat Baik (>80%)**: Kandidat sangat kompetitif
+                    """)
+                
+                # Tabel hasil detail
+                st.markdown("<div class='section-header'><h3>Hasil Detail per Kandidat</h3></div>", unsafe_allow_html=True)
+                
+                # Format kolom untuk display
+                display_df = df_result.copy()
+                if 'Nama' in display_df.columns:
+                    cols = ['Nama', 'Prediksi', 'Probabilitas_Penerimaan', 'Kategori'] + \
+                           ['GRE_Score', 'TOEFL_Score', 'University_Rating', 'SOP', 'LOR', 'GPA', 'Research']
+                    display_df = display_df[[col for col in cols if col in display_df.columns]]
+                
+                display_df['Probabilitas_Penerimaan'] = display_df['Probabilitas_Penerimaan'].round(2)
+                
+                # Color coding untuk prediksi
+                def highlight_prediction(row):
+                    if row['Prediksi'] == 'Diterima':
+                        return ['background-color: #d1e7dd; color: #0f5132;']*len(row)
+                    else:
+                        return ['background-color: #f8d7da; color: #842029;']*len(row)
+                
+                styled_display = style_table(display_df, zebra=False)
+                styled_display = styled_display.apply(highlight_prediction, axis=1)
+                table_html = styled_display.to_html()
+                st.markdown(
+                    f"<div style='max-height: 520px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 4px; padding: 4px;'>{table_html}</div>",
+                    unsafe_allow_html=True
+                )
+                
+                # Download hasil
+                st.markdown("<div class='section-header'><h3>Download Hasil Analisis</h3></div>", unsafe_allow_html=True)
+                result_csv = df_result.to_csv(index=False)
+                st.download_button(
+                    label="Download Hasil (CSV)",
+                    data=result_csv,
+                    file_name="hasil_prediksi.csv",
+                    mime="text/csv"
+                )
+                
+                # Analisis faktor
+                avg_features = df_result[['GRE_Score', 'TOEFL_Score', 'GPA', 'Research']].mean()
+                
+                recommendations = []
+                if avg_features['GRE_Score'] < 310:
+                    recommendations.append("- **GRE Score**: Rata-rata kandidat di bawah 310.")
+                if avg_features['TOEFL_Score'] < 100:
+                    recommendations.append("- **TOEFL Score**: Rata-rata kandidat di bawah 100.")
+                if avg_features['GPA'] < 3.2:
+                    recommendations.append("- **GPA**: Rata-rata IPK di bawah 3.2.")
+                if avg_features['Research'] < 0.5:
+                    recommendations.append("- **Research Experience**: Kurang dari 50% kandidat memiliki pengalaman riset.")
+                
+                if recommendations:
+                    st.markdown("<div class='section-header'><h3>Rekomendasi Perbaikan</h3></div>", unsafe_allow_html=True)
+                    
+                    st.markdown("<p style='color: #6c757d; margin: 10px 0; font-size: 0.95rem;'>Area yang perlu mendapat perhatian:</p>", unsafe_allow_html=True)
+                    
+                    for rec in recommendations:
+                        # Hapus ** dari string
+                        clean_rec = rec.replace('**', '')
+                        st.markdown(f"<p style='color: #495057; margin: 5px 0 5px 20px; font-size: 0.92rem;'>{clean_rec}</p>", unsafe_allow_html=True)
+                
+    except Exception as e:
+        st.markdown(
+            f"""
+            <div style="
+                background-color: #f8d7da;
+                padding: 15px 20px;
+                border-radius: 6px;
+                color: #842029;
+                font-weight: 600;
+                margin: 15px 0;
+            ">
+                Terjadi kesalahan saat memproses file: {str(e)}
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        st.markdown(
+            """
+            <div style="
+                background-color: #cff4fc;
+                padding: 15px 20px;
+                border-radius: 6px;
+                color: #055160;
+                margin: 15px 0;
+            ">
+                Pastikan format CSV sesuai dengan template yang disediakan.
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+else:
+    st.markdown(
+        """
+        <div style="
+            background-color: #e9ecef;
+            padding: 20px 25px;
+            border-radius: 6px;
+            color: #495057;
+            margin: 20px 0;
+            font-size: 1.05rem;
+        ">
+            <strong>Petunjuk:</strong> Silakan upload file CSV data kandidat untuk memulai analisis prediksi penerimaan.
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
 st.markdown("---")
 st.markdown("<p style='text-align: center; font-size: 0.8rem; color: #6c757d;'>Decision Support System - 230011, 230045, 230057</p>", unsafe_allow_html=True)
