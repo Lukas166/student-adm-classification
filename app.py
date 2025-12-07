@@ -728,7 +728,7 @@ if uploaded_file is not None:
             
             # Tampilkan info threshold aktif
             st.markdown(
-                f"<p style='color: #6c757d; font-size: 0.9rem; margin: 5px 0 20px 0;'>Threshold aktif: <strong>{threshold}</strong> <br> Probabilitas >= {threshold*100:.0f}% akan Diterima</p>",
+                f"<p style='color: #6c757d; font-size: 0.9rem; margin: 5px 0 20px 0;'>Threshold aktif: <strong>{threshold}</strong> <br> Kandidat dengan probabilitas >= {threshold*100:.0f}% akan diterima</p>",
                 unsafe_allow_html=True
             )
             
