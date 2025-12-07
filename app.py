@@ -925,7 +925,7 @@ if uploaded_file is not None:
                     st.markdown(f"<p style='color: #495057; margin: 5px 0 5px 20px; font-size: 0.92rem;'>{clean_rec}</p>", unsafe_allow_html=True)
             
             # Download hasil
-            st.markdown("<h3>Download Hasil Analisis</h3>", unsafe_allow_html=True)
+            st.markdown("<br><h3>Download Hasil Analisis</h3>", unsafe_allow_html=True)
             result_csv = df_result.to_csv(index=False)
             st.download_button(
                 label="Download Hasil (CSV)",
