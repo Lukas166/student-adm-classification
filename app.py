@@ -714,7 +714,7 @@ if uploaded_file is not None:
             # Threshold slider untuk real-time adjustment
             st.markdown("<h4 style='color: #495057; margin: 10px 0;'>Atur Threshold Prediksi</h4>", unsafe_allow_html=True)
             threshold = st.slider(
-                "Ambang Batas Probabilitas (semakin tinggi = semakin selektif)",
+                "Informasi untuk Probabilitas (semakin tinggi, semakin selektif)",
                 min_value=0.0,
                 max_value=1.0,
                 value=0.5,
@@ -728,7 +728,7 @@ if uploaded_file is not None:
             
             # Tampilkan info threshold aktif
             st.markdown(
-                f"<p style='color: #6c757d; font-size: 0.9rem; margin: 5px 0 20px 0;'>Threshold aktif: <strong>{threshold}</strong> — Probabilitas >= {threshold*100:.0f}% = Diterima</p>",
+                f"<p style='color: #6c757d; font-size: 0.9rem; margin: 5px 0 20px 0;'>Threshold aktif: <strong>{threshold}</strong> <br> Probabilitas >= {threshold*100:.0f}% akan Diterima</p>",
                 unsafe_allow_html=True
             )
             
