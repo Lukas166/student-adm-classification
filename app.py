@@ -633,7 +633,7 @@ st.markdown("<p style='color: #6c757d; font-size: 1.05rem; margin-top: -10px;'>D
 st.divider()
 
 # Download template
-st.markdown("<div class='section-header'><h3>Download Template CSV</h3></div>", unsafe_allow_html=True)
+st.markdown("<h3>Download Template CSV</h3>", unsafe_allow_html=True)
 
 template_df = create_template_csv()
 csv_template = template_df.to_csv(index=False)
@@ -649,8 +649,11 @@ with col1:
 
 with col2:
     with st.expander("Lihat Format Template & Panduan Pengisian"):
-        styled_template = style_table(template_df, zebra=False)
-        st.markdown(styled_template.to_html(), unsafe_allow_html=True)
+        st.dataframe(
+            template_df,
+            use_container_width=True,
+            hide_index=True
+        )
         st.markdown("""
         **Keterangan Kolom:**
         - **Nama**: Nama kandidat (opsional untuk identifikasi)
@@ -666,7 +669,7 @@ with col2:
 st.markdown("---")
 
 # Upload file
-st.markdown("<div class='section-header'><h3>Upload File CSV</h3></div>", unsafe_allow_html=True)
+st.markdown("<h3>Upload File CSV</h3>", unsafe_allow_html=True)
 
 # Styling upload box: dropzone gelap dengan teks putih, daftar file tetap teks gelap
 st.markdown(
@@ -732,10 +735,11 @@ if uploaded_file is not None:
         
         # Tampilkan preview data
         with st.expander("Preview Data Kandidat"):
-            preview_html = style_table(df_candidates).to_html()
-            st.markdown(
-                f"<div style='max-height: 420px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 4px; padding: 4px;'>{preview_html}</div>",
-                unsafe_allow_html=True
+            st.dataframe(
+                df_candidates,
+                use_container_width=True,
+                hide_index=True,
+                height=420
             )
         
         # Tombol analisis
@@ -748,7 +752,7 @@ if uploaded_file is not None:
                 df_result, stats = analyze_batch_results(df_candidates, predictions, probabilities)
                 
                 st.markdown("---")
-                st.markdown("<div class='section-header'><h2 style='margin: 0 !important;'>Hasil Analisis</h2></div>", unsafe_allow_html=True)
+                st.markdown("<h2>Hasil Analisis</h2>", unsafe_allow_html=True)
                 
                 # Metric cards
                 col1, col2, col3, col4 = st.columns(4)
@@ -818,7 +822,7 @@ if uploaded_file is not None:
                     """, unsafe_allow_html=True)
                 
                 # Feature comparison
-                st.markdown("<div class='section-header'><h3>Perbandingan Fitur: Kandidat Diterima vs Ditolak</h3></div>", unsafe_allow_html=True)
+                st.markdown("<h3>Perbandingan Fitur: Kandidat Diterima vs Ditolak</h3>", unsafe_allow_html=True)
                 
                 st.markdown("""
                 <p style="color: #6c757d; margin: 10px 0 20px 0; font-size: 0.95rem; line-height: 1.6;">
@@ -850,7 +854,7 @@ if uploaded_file is not None:
 
                 importance_df = compute_feature_importance(model, importance_feature_names)
 
-                st.markdown("<div class='section-header'><h3>Feature Importance Model</h3></div>", unsafe_allow_html=True)
+                st.markdown("<h3>Feature Importance Model</h3>", unsafe_allow_html=True)
                 st.markdown(
                     "<p style='color: #6c757d; margin: 10px 0 20px 0; font-size: 0.95rem;'>Semakin tinggi nilai importance, semakin besar pengaruh fitur terhadap prediksi model. Gunakan daftar ini untuk memprioritaskan perbaikan data atau intervensi kandidat.</p>",
                     unsafe_allow_html=True
@@ -869,13 +873,17 @@ if uploaded_file is not None:
                     st.info("Model tidak menyediakan feature importance/koefisien sehingga bagian ini tidak dapat ditampilkan.")
                 
                 # Kategori probabilitas
-                st.markdown("<div class='section-header'><h3>Distribusi Berdasarkan Kategori Probabilitas</h3></div>", unsafe_allow_html=True)
+                st.markdown("<h3>Distribusi Berdasarkan Kategori Probabilitas</h3>", unsafe_allow_html=True)
                 category_summary = df_result['Kategori'].value_counts().reset_index()
                 category_summary.columns = ['Kategori', 'Jumlah Kandidat']
                 
                 col1, col2 = st.columns([1, 2])
                 with col1:
-                    st.markdown(style_table(category_summary).to_html(), unsafe_allow_html=True)
+                    st.dataframe(
+                        category_summary,
+                        use_container_width=True,
+                        hide_index=True
+                    )
                 with col2:
                     st.markdown("""
                     **Interpretasi:**
@@ -886,7 +894,7 @@ if uploaded_file is not None:
                     """)
                 
                 # Tabel hasil detail
-                st.markdown("<div class='section-header'><h3>Hasil Detail per Kandidat</h3></div>", unsafe_allow_html=True)
+                st.markdown("<h3>Hasil Detail per Kandidat</h3>", unsafe_allow_html=True)
                 
                 # Format kolom untuk display
                 display_df = df_result.copy()
@@ -897,23 +905,15 @@ if uploaded_file is not None:
                 
                 display_df['Probabilitas_Penerimaan'] = display_df['Probabilitas_Penerimaan'].round(2)
                 
-                # Color coding untuk prediksi
-                def highlight_prediction(row):
-                    if row['Prediksi'] == 'Diterima':
-                        return ['background-color: #d1e7dd; color: #0f5132;']*len(row)
-                    else:
-                        return ['background-color: #f8d7da; color: #842029;']*len(row)
-                
-                styled_display = style_table(display_df, zebra=False)
-                styled_display = styled_display.apply(highlight_prediction, axis=1)
-                table_html = styled_display.to_html()
-                st.markdown(
-                    f"<div style='max-height: 520px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 4px; padding: 4px;'>{table_html}</div>",
-                    unsafe_allow_html=True
+                st.dataframe(
+                    display_df,
+                    use_container_width=True,
+                    hide_index=True,
+                    height=520
                 )
                 
                 # Download hasil
-                st.markdown("<div class='section-header'><h3>Download Hasil Analisis</h3></div>", unsafe_allow_html=True)
+                st.markdown("<h3>Download Hasil Analisis</h3>", unsafe_allow_html=True)
                 result_csv = df_result.to_csv(index=False)
                 st.download_button(
                     label="Download Hasil (CSV)",
@@ -936,7 +936,7 @@ if uploaded_file is not None:
                     recommendations.append("- **Research Experience**: Kurang dari 50% kandidat memiliki pengalaman riset.")
                 
                 if recommendations:
-                    st.markdown("<div class='section-header'><h3>Rekomendasi Perbaikan</h3></div>", unsafe_allow_html=True)
+                    st.markdown("<h3>Rekomendasi Perbaikan</h3>", unsafe_allow_html=True)
                     
                     st.markdown("<p style='color: #6c757d; margin: 10px 0; font-size: 0.95rem;'>Area yang perlu mendapat perhatian:</p>", unsafe_allow_html=True)
                     
